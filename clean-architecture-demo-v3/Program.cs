@@ -1,16 +1,12 @@
 using Application;
-using Application.Contracts;
-using Application.Features.Products.Queries;
+using clean_architecture_demo_v3.Middleware;
 using Infrastructure;
 using Persistance;
-using Persistance.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-
-builder.Services.AddScoped<IProductRepository, ProductRepository>();
-builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(GetAllProductsQuery).Assembly));
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
 builder.Services.AddPersistance(builder.Configuration);
 builder.Services.AddInfrastructure();
 builder.Services.AddApplication();
@@ -20,7 +16,8 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+app.UseExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -28,9 +25,6 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();

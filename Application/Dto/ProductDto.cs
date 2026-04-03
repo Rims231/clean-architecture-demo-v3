@@ -1,10 +1,18 @@
-﻿namespace Application.DTOs
+﻿using Application.Common.Mappings;
+using AutoMapper;
+
+namespace Application.DTOs
 {
-    public class ProductDto
+    public class ProductDto : IMapFrom<Domain.Entities.Product>
     {
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public decimal Rate { get; set; }
+
+        public void Mapping(Profile profile)
+        {
+            profile.CreateMap<Domain.Entities.Product, ProductDto>();
+        }
     }
 }
