@@ -7,5 +7,6 @@ namespace Application.Contracts
     {
         Task<AuthResponseDto> LoginAsync(LoginDto loginDto);
         Task<string> RegisterAsync(RegisterDto registerDto);
+        Task<bool> ConfirmEmailAsync(string userId, string token);
     }
 }
