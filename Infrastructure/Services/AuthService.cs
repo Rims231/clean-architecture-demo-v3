@@ -65,13 +65,36 @@ namespace Infrastructure.Services
             if (user == null)
                 throw new Exception("Invalid email or password.");
 
-            var isPasswordValid = await _userManager.CheckPasswordAsync(user, loginDto.Password);
-            if (!isPasswordValid)
-                throw new Exception("Invalid email or password.");
+            // Check if account is locked out
+            if (await _userManager.IsLockedOutAsync(user))
+            {
+                var lockoutEnd = await _userManager.GetLockoutEndDateAsync(user);
+                var minutesLeft = Math.Ceiling((lockoutEnd!.Value - DateTimeOffset.UtcNow).TotalMinutes);
+                throw new Exception($"Account is locked. Please try again in {minutesLeft} minute(s).");
+            }
 
             // Block login if email is not confirmed
             if (!user.EmailConfirmed)
                 throw new Exception("Please confirm your email before logging in.");
+
+            var isPasswordValid = await _userManager.CheckPasswordAsync(user, loginDto.Password);
+
+            if (!isPasswordValid)
+            {
+                // Increment failed access count
+                await _userManager.AccessFailedAsync(user);
+
+                var failedAttempts = await _userManager.GetAccessFailedCountAsync(user);
+                var attemptsLeft = 5 - failedAttempts;
+
+                if (await _userManager.IsLockedOutAsync(user))
+                    throw new Exception("Too many failed attempts. Account locked for 5 minutes.");
+
+                throw new Exception($"Invalid email or password. {attemptsLeft} attempt(s) remaining.");
+            }
+
+            // Reset failed count on successful login
+            await _userManager.ResetAccessFailedCountAsync(user);
 
             var token = GenerateJwtToken(user);
 
@@ -101,6 +124,66 @@ namespace Infrastructure.Services
             }
 
             return true;
+        }
+
+        public async Task ForgotPasswordAsync(string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null || !user.EmailConfirmed)
+                return; // Silently return to prevent email enumeration
+
+            var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(resetToken));
+            var resetLink = $"https://localhost:7216/api/auth/reset-password?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(encodedToken)}";
+
+            var emailBody = $@"
+                <h2>Reset Your Password</h2>
+                <p>You requested a password reset. Click the link below to set a new password:</p>
+                <a href='{resetLink}'>Reset Password</a>
+                <p>If you did not request this, please ignore this email.</p>
+                <p>This link will expire after use.</p>";
+
+            await _emailService.SendEmailAsync(user.Email!, "Reset Your Password", emailBody);
+        }
+
+        public async Task ResetPasswordAsync(ResetPasswordDto resetPasswordDto)
+        {
+            var user = await _userManager.FindByEmailAsync(resetPasswordDto.Email);
+            if (user == null)
+                throw new Exception("User not found.");
+
+            var urlDecodedToken = Uri.UnescapeDataString(resetPasswordDto.Token);
+            var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(urlDecodedToken));
+
+            var result = await _userManager.ResetPasswordAsync(user, decodedToken, resetPasswordDto.NewPassword);
+
+            if (!result.Succeeded)
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                throw new Exception(errors);
+            }
+        }
+
+        public async Task ResendConfirmationEmailAsync(string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null)
+                throw new Exception("User not found.");
+
+            if (user.EmailConfirmed)
+                throw new Exception("Email is already confirmed.");
+
+            var confirmationToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var encodedConfirmationToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(confirmationToken));
+            var confirmationLink = $"https://localhost:7216/api/auth/confirm-email?userId={user.Id}&token={Uri.EscapeDataString(encodedConfirmationToken)}";
+
+            var emailBody = $@"
+                <h2>Confirm Your Email</h2>
+                <p>You requested a new confirmation link. Please confirm your email by clicking below:</p>
+                <a href='{confirmationLink}'>Confirm Email</a>
+                <p>This link will expire after use.</p>";
+
+            await _emailService.SendEmailAsync(user.Email!, "Confirm Your Email", emailBody);
         }
 
         private string GenerateJwtToken(IdentityUser user)

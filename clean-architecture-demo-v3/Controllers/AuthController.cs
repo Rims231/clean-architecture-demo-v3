@@ -40,6 +40,27 @@ namespace clean_architecture_demo_v3.Controllers
             return Ok(new { Message = "Email confirmed successfully. You can now log in." });
         }
 
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto forgotPasswordDto)
+        {
+            await _authService.ForgotPasswordAsync(forgotPasswordDto.Email);
+            return Ok(new { Message = "If your email is registered and confirmed, a password reset link has been sent." });
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto resetPasswordDto)
+        {
+            await _authService.ResetPasswordAsync(resetPasswordDto);
+            return Ok(new { Message = "Password reset successfully. You can now log in." });
+        }
+
+        [HttpPost("resend-confirmation-email")]
+        public async Task<IActionResult> ResendConfirmationEmail([FromBody] string email)
+        {
+            await _authService.ResendConfirmationEmailAsync(email);
+            return Ok(new { Message = "Confirmation email resent. Please check your inbox." });
+        }
+
         [Authorize]
         [HttpGet("current-user")]
         public IActionResult GetCurrentUser()
